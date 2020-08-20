@@ -8,21 +8,18 @@ def normalize(lis):
 
 class rnn:
 
-    def __init__(self, x, lines, names, n_a=50, seq_len=10):
+    def __init__(self, x, lines, names, wpl, n_a=50, seq_len=10):
         self.train_x = x
         self.numa = n_a
         self.seq_len = seq_len
         self.lines = lines
         self.times = names
+        self.words_per_line = wpl
 
         self.tokenizer = RegexpTokenizer(r'\w+')
         self.lineset = [x.lower().strip() for x in self.lines]
-        #print(self.lineset)
         self.linelist = [self.tokenizer.tokenize(line) for line in self.lineset]
         self.tokens = self.tokenizer.tokenize(self.train_x)
-
-        #print(self.tokens)
-        #print(self.linelist)
 
         self.uniquex = np.unique(self.tokens).tolist()
         self.uniquex.append('\n')
@@ -71,9 +68,7 @@ class rnn:
         by = self.parameters["by"]
 
         a_next = np.tanh(np.dot(Wax, xt) + np.dot(Waa, a_prev) + ba)
-        #print(a_next.shape)
         yt_pred = self.softmax(np.dot(Wya, a_next) + by)
-        #print(yt_pred.shape)
 
         cache = (a_next, a_prev, xt, self.parameters)
 
@@ -86,10 +81,8 @@ class rnn:
         for t in range(len(X)):
             x[t] = np.zeros((self.xsize, 1))
             if (X[t] != None):
-                #print(len(x))
                 x[t][X[t]] = 1
             a[t], y_hat[t], _ = self.rnn_cell_forward(x[t], a[t-1])
-            #print(len(y_hat[t]))
             loss -= np.log(y_hat[t][Y[t], 0])
         cache = (y_hat, a, x)
         return loss, cache
@@ -153,9 +146,8 @@ class rnn:
         idx = -1
 
         counter = 0
-        newline_character = self.ch_index['\n']
 
-        while (idx != newline_character and counter != 50):
+        for i in range(self.words_per_line):
             a = np.tanh(np.dot(Wax, x) + np.dot(Waa, a_prev) + ba)
             z = np.dot(Wya, a) + by
             y = self.softmax(z)
@@ -169,10 +161,9 @@ class rnn:
 
             a_prev = a
 
-            counter +=1
-
-        if (counter == 50):
-            indices.append(self.ch_index['\n'])
+        
+        indices.append(self.ch_index['\n'])
+        
 
         return indices
 
@@ -180,20 +171,16 @@ class rnn:
         loss = self.get_initial_loss()
         a_prev = np.zeros((self.numa, 1))
 
-        #tokens = [x.lower().strip() for x in self.lines]
-        #print(tokens)
-
         tokens = self.linelist
-        #print(tokens)
+        
+        text = None
 
         for i in range(its):
 
             index = i % len(tokens)
 
-            #print(tokens[index])
-
             x = [None] + [self.ch_index[ch] for ch in tokens[index]]
-            y = x[1:] + [self.ch_index['\n']]
+            y = x[1:] + [x[0]]
 
             new_loss, grads, a_prev = self.optimize(x, y, a_prev)
             loss = self.smooth(loss, new_loss)
@@ -208,18 +195,28 @@ class rnn:
                     print(text, end='')
                 print('\n')
 
+        indices = self.sample(seed)
+        stuff = [self.index_ch[i] for i in indices]
+        text = ''.join((' ' + str(i)) for i in stuff)
+
         return text
 
 
 
-with open('data.txt', 'r') as t:
+textname = 'anime_data_v1.txt'
+
+with open(textname, 'r') as t:
     text = t.read()
     text = text.lower()
 
-lines = open('data.txt').readlines()
-whereswaldo = rnn(text, lines, 8)
-text = whereswaldo.train(400000, 1000)
+lines = open(textname).readlines()
+iters = 20000000
+whereswaldo = rnn(text, lines, 8, 10)
+text = whereswaldo.train(iters, 200000)
 
-with open('final.txt', 'w') as f:
+with open('final.txt', 'a') as f:
+    f.write("Training iterations: " + str(iters) + "\n")
+    f.write("Training set: " + str(textname) + "\n")
     f.write(text)
+    f.write("\n\n\n")
     f.close()
